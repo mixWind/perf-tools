@@ -61,16 +61,18 @@ tracing=/sys/kernel/debug/tracing
 flock=/var/tmp/.ftrace-lock
 opt_duration=0; duration=; opt_pid=0; pid=; opt_tid=0; tid=; pidtext=
 opt_headers=0
+opt_stack=0
 trap ':' INT QUIT TERM PIPE HUP	# sends execution to end tracing section
 
 function usage {
 	cat <<-END >&2
-	USAGE: functrace [-hH] [-p PID] [-L TID] [-d secs] funcstring
+	USAGE: functrace [-hHs] [-p PID] [-L TID] [-d secs] funcstring
 	                 -d seconds      # trace duration, and use buffers
 	                 -h              # this usage message
 	                 -H              # include column headers
 	                 -p PID          # trace when this pid is on-CPU
 	                 -L TID          # trace when this thread is on-CPU
+	                 -s              # enable stack trace
 	  eg,
 	       functrace do_nanosleep    # trace the do_nanosleep() function
 	       functrace '*sleep'        # trace functions ending in "sleep"
@@ -115,13 +117,14 @@ function edie {
 }
 
 ### process options
-while getopts d:hHp:L: opt
+while getopts d:hHp:L:s opt
 do
 	case $opt in
 	d)	opt_duration=1; duration=$OPTARG ;;
 	p)	opt_pid=1; pid=$OPTARG ;;
 	L)	opt_tid=1; tid=$OPTARG ;;
 	H)	opt_headers=1; ;;
+	s)	opt_stack=1; ;;
 	h|?)	usage ;;
 	esac
 done
@@ -171,6 +174,11 @@ if ! echo "$funcs" > set_ftrace_filter; then
 fi
 if ! echo function > current_tracer; then
 	edie "ERROR: setting current_tracer to \"function\". Exiting."
+fi
+if (( opt_stack )); then
+    if ! echo ${funcs}:stacktrace:1 >> set_ftrace_filter; then
+        edie "ERROR: enabling $funcs stack. Exiting."
+    fi
 fi
 
 ### print trace buffer
